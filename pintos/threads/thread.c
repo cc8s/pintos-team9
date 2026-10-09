@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* sleep_list: sleep wake 방식에 필요*/
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +111,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list); /*추가*/
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -208,6 +212,41 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 
 	return tid;
+}
+
+/* 비교함수 */
+static bool
+wakeup_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	const struct thread *ta = list_entry (a, struct thread, elem);
+	const struct thread *tb = list_entry (b, struct thread, elem);
+	return ta->local_tick < tb->local_tick;
+}
+
+/* sleep */
+void
+thread_sleep (int64_t wakeup_tick) {
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+
+	old_level = intr_disable ();
+	if (curr != idle_thread) {
+		curr->local_tick = wakeup_tick;
+		list_insert_ordered (&sleep_list, &curr->elem, wakeup_less, NULL);
+		thread_block ();
+	}
+	intr_set_level (old_level);
+}
+
+/* thread wake up 함수 */
+void
+thread_wakeup (int64_t ticks) {
+	while (!list_empty (&sleep_list)) {
+		struct thread *t = list_entry (list_front (&sleep_list), struct thread, elem);
+		if (t->local_tick > ticks)
+			break;
+		list_pop_front (&sleep_list);
+		thread_unblock (t);
+	}
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
