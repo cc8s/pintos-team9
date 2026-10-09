@@ -94,6 +94,7 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	int64_t sleep_until;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -113,6 +114,9 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+void sleep_in (int64_t sleep_until); // sleep in 함수 선언 
+void sleep_out(int64_t current_tick); // sleep out 함수 선언 
 
 void thread_init (void);
 void thread_start (void);

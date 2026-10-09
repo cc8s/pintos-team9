@@ -266,7 +266,7 @@ intr_context (void) {
 void
 intr_yield_on_return (void) {
 	ASSERT (intr_context ());
-	yield_on_return = true;
+	yield_on_return = true; // 핸들러 끝나면 양보해달라고 예약만 함 
 }
 
 /* 8259A Programmable Interrupt Controller. */
