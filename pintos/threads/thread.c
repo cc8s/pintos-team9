@@ -222,18 +222,21 @@ wakeup_less (const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	return ta->local_tick < tb->local_tick;
 }
 
-/* sleep */
+/* thread sleep 함수 */
 void
 thread_sleep (int64_t wakeup_tick) {
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
+	/* 상태를 건드리기 전에 잘못 호출 시 바로 패닉시킴(원인 찾기 용이) */
+	ASSERT (!intr_context ());
+	ASSERT (curr != idle_thread);
 
 	old_level = intr_disable ();
-	if (curr != idle_thread) {
-		curr->local_tick = wakeup_tick;
-		list_insert_ordered (&sleep_list, &curr->elem, wakeup_less, NULL);
-		thread_block ();
-	}
+
+	curr->local_tick = wakeup_tick;
+	list_insert_ordered (&sleep_list, &curr->elem, wakeup_less, NULL);
+	thread_block ();
+
 	intr_set_level (old_level);
 }
 
