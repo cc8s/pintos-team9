@@ -2,9 +2,7 @@
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
-#include <stdint.h>
 #include <stdio.h>
-#include "list.h"
 #include "threads/interrupt.h"
 #include "threads/io.h"
 #include "threads/synch.h"
@@ -18,8 +16,6 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
-
-static struct list sleep_list;
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
@@ -41,7 +37,6 @@ timer_init (void) {
 	/* 8254 input frequency divided by TIMER_FREQ, rounded to
 	   nearest. */
 	uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
-	list_init (&sleep_list);
 
 	outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
 	outb (0x40, count & 0xff);
@@ -79,10 +74,10 @@ timer_calibrate (void) {
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
-	int64_t t = ticks; // Read global ticks.
+	int64_t t = ticks;
 	intr_set_level (old_level);
 	barrier ();
-	return t; // Return the recent ticks.
+	return t;
 }
 
 /* Returns the number of timer ticks elapsed since THEN, which
@@ -95,20 +90,14 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
+
 	ASSERT (intr_get_level () == INTR_ON);
-	if (ticks <= 0){
-	    return ;
-	} int64_t start = timer_ticks ();
 
-	while (timer_elapsed (start) < ticks){
-	    struct thread *cur = thread_current();
-
-		cur->wakeup_time = start + ticks;
-	    enum intr_level old_level = intr_disable();
-		list_insert_ordered(&sleep_list, &(cur->elem), list_cmp, NULL);
-		thread_block();
-		intr_set_level(old_level);
-	}
+	if (ticks <= 0)
+		return;
+	
+	int64_t wakeup_tick = timer_ticks() + ticks;
+	thread_sleep(wakeup_tick);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -140,13 +129,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
-
-	struct thread *first_thread;
-
-	while (!list_empty(&sleep_list) && (first_thread = list_entry(list_front(&sleep_list), struct thread, elem))->wakeup_time <= ticks){
-	    list_pop_front(&sleep_list);
-		thread_unblock(first_thread);
-	}
+	thread_wakeup(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

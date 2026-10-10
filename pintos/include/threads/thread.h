@@ -92,9 +92,10 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	int64_t local_tick; 				/* 깨어날 절대시간 */
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
-	int64_t wakeup_time;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -127,6 +128,9 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
+void thread_sleep (int64_t);
+void thread_wakeup (int64_t);
+
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
@@ -143,7 +147,5 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
-
-bool list_cmp (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 #endif /* threads/thread.h */

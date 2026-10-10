@@ -1,6 +1,5 @@
 #include "list.h"
 #include "../debug.h"
-#include "threads/thread.h"
 
 /* Our doubly linked lists have two header elements: the "head"
    just before the first element and the "tail" just after the
@@ -238,19 +237,6 @@ struct list_elem *e = list_pop_front (&list);
 ...do something with e...
 }
 */
-
-// list entry를 이용해서 thread의 주소를 얻으면, 두 thread의 wakeup_time을 비교해서 bool로 돌려주기. aux는 안 쓰니까 UNUSED를 사용하면 됌.
-
-bool list_cmp (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
-    const struct thread *left;
-    const struct thread *right;
-    left = list_entry(a, struct thread, elem);
-    right = list_entry(b, struct thread, elem);
-    if (left->wakeup_time < right->wakeup_time){
-        return true;
-    } return false;
-}
-
 struct list_elem *
 list_remove (struct list_elem *elem) {
 	ASSERT (is_interior (elem));
