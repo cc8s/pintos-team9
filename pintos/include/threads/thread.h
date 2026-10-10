@@ -130,6 +130,7 @@ void thread_unblock (struct thread *);
 
 void thread_sleep (int64_t);
 void thread_wakeup (int64_t);
+void thread_priority_push(struct list *list, struct thread *t); // priority 추가
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

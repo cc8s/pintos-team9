@@ -252,6 +252,18 @@ thread_wakeup (int64_t ticks) {
 	}
 }
 
+/*priority 비교함수*/
+static bool priority_order(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	return (list_entry (a, struct thread, elem))->priority > (list_entry (b, struct thread, elem)->priority);
+}
+
+/* thread priority push 함수 */
+/*이 함수 안에 intr_disable이 없음에 주의 */
+void thread_priority_push(struct list *list, struct thread *t){
+	ASSERT (t != idle_thread);
+	list_insert_ordered (list, &(t->elem), priority_order, NULL);
+}
+
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -282,7 +294,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	thread_priority_push (&ready_list, t); //priority로 바꿈
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -345,7 +357,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		thread_priority_push (&ready_list, curr);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
