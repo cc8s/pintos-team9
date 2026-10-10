@@ -65,6 +65,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static void preempt_switch(void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -210,6 +211,8 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	preempt_switch(); // thread_create할 때 선점 
+	
 
 	return tid;
 }
@@ -250,6 +253,19 @@ thread_wakeup (int64_t ticks) {
 		list_pop_front (&sleep_list);
 		thread_unblock (t);
 	}
+	preempt_switch();
+}
+
+/*선점 구현*/
+static void preempt_switch(void){
+	if((!list_empty (&ready_list)) && (list_entry (list_front (&ready_list), struct thread, elem))->priority > (thread_current())->priority){
+		if(intr_context()){ // context확인 후 선점
+			intr_yield_on_return();
+		}
+		else{
+			thread_yield();
+		}
+	}
 }
 
 /*priority 비교함수*/
@@ -261,6 +277,7 @@ static bool priority_order(const struct list_elem *a, const struct list_elem *b,
 /*이 함수 안에 intr_disable이 없음에 주의 */
 void thread_priority_push(struct list *list, struct thread *t){
 	ASSERT (t != idle_thread);
+	ASSERT (intr_get_level () == INTR_OFF);
 	list_insert_ordered (list, &(t->elem), priority_order, NULL);
 }
 
