@@ -258,6 +258,7 @@ thread_wakeup (int64_t ticks) {
 
 /*선점 구현*/
 static void preempt_switch(void){
+	enum intr_level old_level = intr_disable ();
 	if((!list_empty (&ready_list)) && (list_entry (list_front (&ready_list), struct thread, elem))->priority > (thread_current())->priority){
 		if(intr_context()){ // context확인 후 선점
 			intr_yield_on_return();
@@ -266,6 +267,7 @@ static void preempt_switch(void){
 			thread_yield();
 		}
 	}
+	intr_set_level (old_level);
 }
 
 /*priority 비교함수*/
@@ -383,6 +385,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	preempt_switch();
 }
 
 /* Returns the current thread's priority. */
