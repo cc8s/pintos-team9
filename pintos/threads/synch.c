@@ -79,7 +79,7 @@ sema_down (struct semaphore *sema) {
 
    This function may be called from an interrupt handler. */
 bool
-sema_try_down (struct semaphore *sema) {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+sema_try_down (struct semaphore *sema) {
 	enum intr_level old_level;
 	bool success;
 
@@ -216,7 +216,7 @@ lock_try_acquire (struct lock *lock) {
 
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
-   handler. */ 
+   handler. */
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
