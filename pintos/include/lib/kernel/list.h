@@ -104,10 +104,6 @@ struct list {
 	((STRUCT *) ((uint8_t *) &(LIST_ELEM)->next     \
 		- offsetof (STRUCT, MEMBER.next)))
 
-/*
-고리 주소 - 고리가 스레드 안에서 떨어진 거리 = 스레드 시작 주소
-   1040   -              40                 =     1000*/
-
 void list_init (struct list *);
 
 /* List traversal. */

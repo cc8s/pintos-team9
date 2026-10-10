@@ -73,8 +73,8 @@ timer_calibrate (void) {
 /* Returns the number of timer ticks since the OS booted. */
 int64_t
 timer_ticks (void) {
-	enum intr_level old_level = intr_disable (); // 읽는 동안은 ticks 안 올라가게 잠금 
-	int64_t t = ticks; // ticks 값 읽기 
+	enum intr_level old_level = intr_disable ();
+	int64_t t = ticks;
 	intr_set_level (old_level);
 	barrier ();
 	return t;
@@ -90,15 +90,14 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
+
 	ASSERT (intr_get_level () == INTR_ON);
 
-	if(ticks <= 0){
+	if (ticks <= 0)
 		return;
-	}
 	
-	int64_t start = timer_ticks ();
-
-	sleep_in(ticks + start);
+	int64_t wakeup_tick = timer_ticks() + ticks;
+	thread_sleep(wakeup_tick);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -129,8 +128,8 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	sleep_out(ticks);
 	thread_tick ();
+	thread_wakeup(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

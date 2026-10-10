@@ -82,13 +82,13 @@ sleeper (void *test_)
   int i;
 
   /* Make sure we're at the beginning of a timer tick. */
-  timer_sleep (1); // 새 tick이  시작되는 순간에 맞춰놓음 
+  timer_sleep (1);
 
   for (i = 1; i <= test->iterations; i++) 
     {
       int64_t sleep_until = test->start + i * 10;
       timer_sleep (sleep_until - timer_ticks ());
       *test->output_pos++ = timer_ticks () - test->start;
-      thread_yield (); // 바로 양보 
+      thread_yield ();
     }
 }
