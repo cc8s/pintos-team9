@@ -65,13 +65,12 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-static void preempt_switch(void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
 /* Returns the running thread.
- * Read the CPU's stack pointer `rsp', and then round that
+ * Read the CPU's stack pointer `rsp', a nd then round that
  * down to the start of a page.  Since `struct thread' is
  * always at the beginning of a page and the stack pointer is
  * somewhere in the middle, this locates the curent thread. */
@@ -257,7 +256,7 @@ thread_wakeup (int64_t ticks) {
 }
 
 /*선점 구현*/
-static void preempt_switch(void){
+void preempt_switch(void){
 	enum intr_level old_level = intr_disable ();
 	if((!list_empty (&ready_list)) && (list_entry (list_front (&ready_list), struct thread, elem))->priority > (thread_current())->priority){
 		if(intr_context()){ // context확인 후 선점

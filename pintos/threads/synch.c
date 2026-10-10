@@ -107,12 +107,17 @@ sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
 
 	ASSERT (sema != NULL);
+	
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
 	sema->value++;
+
+	if (!list_empty (&sema->waiters)){
+		thread_unblock (list_entry (list_pop_front (&sema->waiters),struct thread, elem));
+		preempt_switch();
+		// 다음 스레드는 자기가 저장한 상태로 복원되고 나는 돌아와서 아래 intr_set_level로 원래 상태 복원하니까 괜찮음
+	}
+		
 	intr_set_level (old_level);
 }
 
