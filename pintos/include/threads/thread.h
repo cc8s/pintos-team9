@@ -91,6 +91,7 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	// int donated;
 
 	int64_t local_tick; 				/* 깨어날 절대시간 */
 
@@ -130,6 +131,13 @@ void thread_unblock (struct thread *);
 
 void thread_sleep (int64_t);
 void thread_wakeup (int64_t);
+/* ========= Added by user ======== */
+enum yield_place {
+    IN_HANDLER,
+    IN_THREAD
+};
+void yield_by_priority (enum yield_place);
+/* ========= Added by user ======== */
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -147,5 +155,7 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+bool priority_compare (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 #endif /* threads/thread.h */
