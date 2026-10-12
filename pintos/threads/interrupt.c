@@ -342,7 +342,6 @@ intr_handler (struct intr_frame *frame) {
 		ASSERT (intr_get_level () == INTR_OFF);
 		ASSERT (!intr_context ());
 
-		// ======== 여기서부터 handler의 wrapping 함수 ========
 		in_external_intr = true;
 		yield_on_return = false;
 	}
@@ -368,7 +367,6 @@ intr_handler (struct intr_frame *frame) {
 		ASSERT (intr_context ());
 
 		in_external_intr = false;
-		// ======== 여기까지 handler의 wrapping 함수 ========
 		pic_end_of_interrupt (frame->vec_no);
 
 		if (yield_on_return)
