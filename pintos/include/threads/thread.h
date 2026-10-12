@@ -131,6 +131,9 @@ void thread_unblock (struct thread *);
 void thread_sleep (int64_t);
 void thread_wakeup (int64_t);
 
+bool priority_more (const struct list_elem *a, const struct list_elem *b, void *aux);
+void thread_check_preempt (void);
+
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
