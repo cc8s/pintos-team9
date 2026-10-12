@@ -211,10 +211,22 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	if (t->priority > thread_current ()->priority) { /* 새 스레드 현재 스레드 비교 */
+		thread_yield();
+	}
+
 	return tid;
 }
+/* priority 우선순위 비교함수*/
+static bool
+priority_more (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	const struct thread *ta = list_entry (a, struct thread, elem);
+	const struct thread *tb = list_entry (b, struct thread, elem);
+	return ta->priority > tb->priority;
+}
 
-/* 비교함수 */
+
+/* local_tick 우선순위 비교함수 */
 static bool
 wakeup_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	const struct thread *ta = list_entry (a, struct thread, elem);
@@ -282,7 +294,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, priority_more, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -345,7 +357,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, priority_more, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
