@@ -293,7 +293,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 }
 
 static bool
-cond_priority_more (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+cond_priority_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	/* 1단계: list_elem → semaphore_elem */
 	const struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
 	const struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
@@ -303,7 +303,7 @@ cond_priority_more (const struct list_elem *a, const struct list_elem *b, void *
 	const struct thread *tb = list_entry (list_front (&sb->semaphore.waiters), struct thread, elem);
 
 	/* 3단계: 우선순위 비교 */
-	return ta->priority > tb->priority;
+	return ta->priority < tb->priority;
 }
 
 /* If any threads are waiting on COND (protected by LOCK), then
@@ -321,9 +321,9 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters)) {
-		list_sort (&cond->waiters, cond_priority_more, NULL);
-		sema_up (&list_entry (list_pop_front (&cond->waiters),
-					struct semaphore_elem, elem)->semaphore);
+		struct list_elem *max_elem = list_max (&cond->waiters, cond_priority_less, NULL);
+		list_remove (max_elem);
+		sema_up (&list_entry (max_elem, struct semaphore_elem, elem)->semaphore);
 	}
 }
 
