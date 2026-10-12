@@ -290,6 +290,7 @@ thread_unblock (struct thread *t) {
 	enum intr_level old_level;
 
 	ASSERT (is_thread (t));
+	ASSERT (t != idle_thread);
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
