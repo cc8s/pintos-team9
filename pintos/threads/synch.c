@@ -105,8 +105,7 @@ sema_try_down (struct semaphore *sema) {
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
-	struct thread *t = NULL;
-
+	struct thread *t;
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
@@ -117,14 +116,7 @@ sema_up (struct semaphore *sema) {
 		thread_unblock (t);
 	}
 	sema->value++;
-	if (t != NULL && t->priority > thread_current ()->priority) {
-		if (intr_context ()) {
-			intr_yield_on_return ();
-		}
-		else {
-					thread_yield ();
-		}
-	}
+	thread_check_preempt ();
 	intr_set_level (old_level);
 }
 
