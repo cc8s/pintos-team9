@@ -218,7 +218,7 @@ thread_create (const char *name, int priority,
 	return tid;
 }
 /* priority 우선순위 비교함수*/
-static bool
+bool
 priority_more (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	const struct thread *ta = list_entry (a, struct thread, elem);
 	const struct thread *tb = list_entry (b, struct thread, elem);
