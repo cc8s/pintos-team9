@@ -259,6 +259,7 @@ thread_wakeup (int64_t ticks) {
 			break;
 		list_pop_front (&sleep_list);
 		thread_unblock (t);
+		thread_check_preempt ();
 	}
 }
 
