@@ -32,6 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static void chain_donate_priority(struct lock *lock, int change_priority);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -195,18 +197,27 @@ lock_acquire (struct lock *lock) {
 	struct thread *curr = thread_current();
 
 	enum intr_level old_level = intr_disable ();
-	if(lock->holder != NULL){
-		if(lock->holder->priority < curr->priority){
-			lock->holder->priority = curr->priority;
-		}
+
+	if(lock->holder){
 		curr->wait_lock = lock;
+		chain_donate_priority(lock, curr->priority);
 	}
+
 	sema_down (&lock->semaphore);
 	lock->holder = curr;
 	curr->wait_lock  = NULL;
 	list_push_front(&(curr->held_lock), &(lock->lock_chain));
 	intr_set_level (old_level);
 
+}
+
+static void chain_donate_priority(struct lock *lock, int change_priority){
+	ASSERT(intr_get_level () == INTR_OFF);
+	for(struct lock *victim = lock; victim != NULL; victim = victim->holder->wait_lock){
+		if(victim->holder->priority < change_priority){
+			victim->holder->priority = change_priority;
+		}
+	}
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -231,6 +242,29 @@ lock_try_acquire (struct lock *lock) {
 	return success;
 }
 
+
+/*우선순위 양도 다음 next로 */
+int recalc_priority(struct thread *t){
+
+	int max_priority = t->local_priority;
+	struct list_elem *cur;
+
+	for(cur = list_begin (&t->held_lock); cur != list_end(&t->held_lock); cur = list_next(cur)){
+		struct lock *local_lock = list_entry(cur, struct lock, lock_chain);
+		struct list *list = &((local_lock->semaphore).waiters);
+		int priority;
+		for(struct list_elem *local_cur = list_begin(list); local_cur != list_end(list); local_cur = list_next(local_cur)){
+			priority = (list_entry(local_cur, struct thread, elem)->priority);
+			if (max_priority < priority){
+				max_priority = priority;
+			}
+		}
+	}
+	return max_priority;
+}
+
+
+
 /* Releases LOCK, which must be owned by the current thread.
    This is lock_release function.
 
@@ -245,35 +279,14 @@ lock_release (struct lock *lock) {
 	enum intr_level old_level = intr_disable();
 	list_remove(&(lock->lock_chain));
 
-	lock->holder->priority = recalc_priority(lock);
+	lock->holder->priority = recalc_priority(lock->holder);
+	
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 
 	intr_set_level(old_level);
 }
-
-
-/*우선순위 양도 다음 next로 */
-int recalc_priority(struct lock *lock){
-
-	int max_priority = lock->holder->local_priority;
-	struct list_elem *cur;
-
-	for(cur = list_begin (&(lock->holder)->held_lock); cur != list_end(&(lock->holder)->held_lock); cur = list_next(cur)){
-		struct lock *local_lock = list_entry(cur, struct lock, lock_chain);
-		struct list *list = &((local_lock->semaphore).waiters);
-		int priority;
-		for(struct list_elem *local_cur = list_begin(list); local_cur != list_end(list); local_cur = list_next(local_cur)){
-			priority = (list_entry(local_cur, struct thread, elem)->priority);
-			if (max_priority < priority){
-				max_priority = priority;
-			}
-		}
-	}
-	return max_priority;
-}
-
 
 
 /* Returns true if the current thread holds LOCK, false
