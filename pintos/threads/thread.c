@@ -483,6 +483,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->local_priority = priority;
+	list_init(&(t->held_lock));
+	t->wait_lock = NULL;
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

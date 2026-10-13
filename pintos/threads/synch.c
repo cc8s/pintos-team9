@@ -192,8 +192,21 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	struct thread *curr = thread_current();
+
+	enum intr_level old_level = intr_disable ();
+	if(lock->holder != NULL){
+		if(lock->holder->priority < curr->priority){
+			lock->holder->priority = curr->priority;
+		}
+		curr->wait_lock = lock;
+	}
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	lock->holder = curr;
+	curr->wait_lock  = NULL;
+	list_push_front(&(curr->held_lock), &(lock->lock_chain));
+	intr_set_level (old_level);
+
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -210,8 +223,11 @@ lock_try_acquire (struct lock *lock) {
 	ASSERT (!lock_held_by_current_thread (lock));
 
 	success = sema_try_down (&lock->semaphore);
-	if (success)
+	if (success){
 		lock->holder = thread_current ();
+		lock->holder->wait_lock = NULL;
+		list_push_back(&(lock->holder->held_lock), &(lock->lock_chain));
+	}
 	return success;
 }
 
@@ -226,9 +242,39 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	enum intr_level old_level = intr_disable();
+	list_remove(&(lock->lock_chain));
+
+	lock->holder->priority = recalc_priority(lock);
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
+
+	intr_set_level(old_level);
 }
+
+
+/*우선순위 양도 다음 next로 */
+int recalc_priority(struct lock *lock){
+
+	int max_priority = lock->holder->local_priority;
+	struct list_elem *cur;
+
+	for(cur = list_begin (&(lock->holder)->held_lock); cur != list_end(&(lock->holder)->held_lock); cur = list_next(cur)){
+		struct lock *local_lock = list_entry(cur, struct lock, lock_chain);
+		struct list *list = &((local_lock->semaphore).waiters);
+		int priority;
+		for(struct list_elem *local_cur = list_begin(list); local_cur != list_end(list); local_cur = list_next(local_cur)){
+			priority = (list_entry(local_cur, struct thread, elem)->priority);
+			if (max_priority < priority){
+				max_priority = priority;
+			}
+		}
+	}
+	return max_priority;
+}
+
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds

@@ -9,6 +9,7 @@
 #include "vm/vm.h"
 #endif
 
+struct lock;
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -91,11 +92,14 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int local_priority;                 /* priority를 양보 받기 전의 priority */
 
 	int64_t local_tick; 				/* 깨어날 절대시간 */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct lock *wait_lock;                  /* 지금 기다리는 lock. */
+	struct list held_lock;              /* 지금 가지고 있는 lock의 리스트. */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
