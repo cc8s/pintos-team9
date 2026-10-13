@@ -224,8 +224,6 @@ static void chain_donate_priority(struct lock *lock, int change_priority){
 	}
 }
 
-
-
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
    thread.
@@ -286,7 +284,7 @@ lock_release (struct lock *lock) {
 	enum intr_level old_level = intr_disable();
 	list_remove(&(lock->lock_chain));
 
-	thread_current()->priority = recalc_priority(lock->holder);
+	thread_current()->priority = recalc_priority(thread_current());
 	
 
 	lock->holder = NULL;

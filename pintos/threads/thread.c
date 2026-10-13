@@ -218,6 +218,7 @@ thread_create (const char *name, int priority,
 
 /*ready list 삭제 후 재 정렬 함수*/
 void thread_reorder_ready(struct thread *t){
+	ASSERT (intr_get_level () == INTR_OFF);
 	if(t->status == THREAD_READY){
 		list_remove(&(t->elem));
 		list_insert_ordered (&ready_list, &(t->elem), priority_more, NULL);
