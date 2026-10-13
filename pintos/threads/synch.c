@@ -32,6 +32,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#define MAX_DONATION_DEPTH 10 /*기부 제한 깊이 -> 체인이 순환하거나 길어지는 경우를 막음*/
 static void chain_donate_priority(struct lock *lock, int change_priority);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
@@ -213,12 +214,17 @@ lock_acquire (struct lock *lock) {
 
 static void chain_donate_priority(struct lock *lock, int change_priority){
 	ASSERT(intr_get_level () == INTR_OFF);
-	for(struct lock *victim = lock; (victim != NULL &&  victim->holder != NULL); victim = victim->holder->wait_lock){
+	int depth = 0;
+	for(struct lock *victim = lock; (depth < MAX_DONATION_DEPTH && victim != NULL &&  victim->holder != NULL); victim = victim->holder->wait_lock){
 		if(victim->holder->priority < change_priority){
 			victim->holder->priority = change_priority;
+			thread_reorder_ready(victim->holder);
 		}
+		depth++;
 	}
 }
+
+
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -233,11 +239,13 @@ lock_try_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	enum intr_level old_level = intr_disable ();
 	success = sema_try_down (&lock->semaphore);
 	if (success){
 		lock->holder = thread_current ();
-		list_push_back(&(lock->holder->held_lock), &(lock->lock_chain));
+		list_push_front(&(lock->holder->held_lock), &(lock->lock_chain));
 	}
+	intr_set_level (old_level);
 	return success;
 }
 
@@ -278,7 +286,7 @@ lock_release (struct lock *lock) {
 	enum intr_level old_level = intr_disable();
 	list_remove(&(lock->lock_chain));
 
-	lock->holder->priority = recalc_priority(lock->holder);
+	thread_current()->priority = recalc_priority(lock->holder);
 	
 
 	lock->holder = NULL;
