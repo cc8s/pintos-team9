@@ -91,11 +91,9 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-	// int donated;
 
 	int64_t local_tick; 				/* 깨어날 절대시간 */
-
-	/* Shared between thread.c and synch.c. */
+	struct list lock_list;              /* 같은 lock 걸린 thread를 추적 */
 	struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
@@ -132,7 +130,8 @@ void thread_unblock (struct thread *);
 void thread_sleep (int64_t);
 void thread_wakeup (int64_t);
 
-bool priority_more (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool priority_ascending (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool priority_descending (const struct list_elem *a, const struct list_elem *b, void *aux);
 void thread_check_preempt (void);
 
 struct thread *thread_current (void);

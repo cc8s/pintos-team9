@@ -210,17 +210,24 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-	
+
 	thread_check_preempt ();
 
 	return tid;
 }
 /* priority 우선순위 비교함수*/
 bool
-priority_more (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+priority_ascending (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	const struct thread *ta = list_entry (a, struct thread, elem);
 	const struct thread *tb = list_entry (b, struct thread, elem);
 	return ta->priority > tb->priority;
+}
+
+bool
+priority_descending (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	const struct thread *ta = list_entry (a, struct thread, elem);
+	const struct thread *tb = list_entry (b, struct thread, elem);
+	return ta->priority < tb->priority;
 }
 
 
@@ -294,7 +301,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_insert_ordered (&ready_list, &t->elem, priority_more, NULL);
+	list_insert_ordered (&ready_list, &t->elem, priority_ascending, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -357,7 +364,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_insert_ordered (&ready_list, &curr->elem, priority_more, NULL);
+		list_insert_ordered (&ready_list, &curr->elem, priority_ascending, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -367,7 +374,7 @@ void
 thread_check_preempt (void) {
 	enum intr_level old_level;
 	old_level = intr_disable ();
-		
+
 	if (!list_empty (&ready_list)) {
 		struct thread *t = list_entry (list_front (&ready_list), struct thread, elem);
 		if (t->priority > thread_current ()->priority) {
@@ -483,7 +490,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
-}
+	list_init(&t->lock_list);
+} // lock_list init. thread_create() needed only once, init_thread() needed for each thread
 
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is

@@ -29,6 +29,7 @@
 #include "threads/synch.h"
 #include <stdio.h>
 #include <string.h>
+#include "list.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
@@ -111,7 +112,7 @@ sema_up (struct semaphore *sema) {
 	old_level = intr_disable ();
 
 	if (!list_empty (&sema->waiters)) {
-		list_sort (&sema->waiters, priority_more, NULL);
+		list_sort (&sema->waiters, priority_ascending, NULL);
 		t = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
 		thread_unblock (t);
 	}
@@ -193,22 +194,16 @@ lock_acquire (struct lock *lock) { // 케이스를 2개로 나누는 것이 좋�
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	if (lock->holder){ // 첫 lock이 아닌 경우. 대기열로 갈 때는 이전 우선순위 저장.
-	// int prev_priority = lock->holder->priority;
-	// int prev_lock_priority = lock->holder->priority;
-	// int now_lock_priority = list_entry(list_front(&lock->semaphore.waiters), struct thread, elem)->priority;
+	if (lock->holder){ // 첫 lock이 아닌 경우. 그 외에는 이전 우선순위 저장.
     	if (lock->holder->priority < thread_current()->priority){
     	lock->holder->priority = thread_current()->priority;
     	}
 	} sema_down (&lock->semaphore); // sema_down()의 thread block()에서 끊김.
-	// if (prev_lock_priority < list_entry(list_front(&lock->semaphore.waiters), struct thread, elem)->priority){
-	//     prev_lock_priority = now_lock_priority;
-	// }
+	// lock을 얻었을 때 lock_list에 있는 lock들에 저장.
+	list_push_back(&thread_current()->lock_list, &lock->elem);
 	lock->holder = thread_current ();
-	lock->semaphore.locked_priority = lock->holder->priority; // donate 이전 주소 저장.
-	// if (prev_priority < lock->holder->priority){
-	//     prev_priority = lock->holder->priority;
-	// }
+	lock->semaphore.locked_priority = lock->holder->priority;
+	// donate 이전 주소 저장.
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -241,13 +236,35 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	// low가 high 녀석의 우선순위를 받고 싶어서.
+	// int lock_list_max = list_entry(list_max(&thread_current()->lock_list, priority_ascending, NULL), struct thread, elem)->priority;
+	// int prev_priority = lock->semaphore.locked_priority;
+
+	struct list_elem *i;
 	lock->holder->priority = lock->semaphore.locked_priority;
 	lock->holder = NULL;
+
+	int result = lock->semaphore.locked_priority;
+	list_remove(&lock->elem);
+	// 첫 값은 locked_priority.
+
+     for (i = list_begin (&thread_current()->lock_list); i != list_end (&thread_current()->lock_list); i = list_next (i)){
+	// for (int i = 0; i < list_size(&thread_current()->lock_list); i++){
+	// thread안의 lock list에 존재하는 lock의 개수만큼
+	    int lock_max;
+		struct lock *target_lock = list_entry(i, struct lock, elem);
+		struct list *target_waiters = &target_lock->semaphore.waiters;
+
+	    if (!list_empty(target_waiters)){
+		// 일단 각 lock 들이 list_empty하지 않은 지 검사
+		    lock_max = list_entry(list_max(target_waiters, priority_descending, NULL), struct thread, elem)->priority;
+			if (result < lock_max){
+			    result = lock_max;
+			}
+		}
+	} thread_current()->priority = result;
 	lock->semaphore.locked_priority = 0;
 	sema_up (&lock->semaphore);
 }
-
 
 	// if (lock->holder->priority < list_entry(list_front(&lock->semaphore.waiters), struct thread, elem)->priority)
 /* Returns true if the current thread holds LOCK, false
