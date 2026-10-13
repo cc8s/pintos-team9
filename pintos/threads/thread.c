@@ -11,6 +11,8 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "threads/fixed_point.h" // 고정소수점 파일 헤더 
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
