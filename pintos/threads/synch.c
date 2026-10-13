@@ -213,7 +213,7 @@ lock_acquire (struct lock *lock) {
 
 static void chain_donate_priority(struct lock *lock, int change_priority){
 	ASSERT(intr_get_level () == INTR_OFF);
-	for(struct lock *victim = lock; victim != NULL; victim = victim->holder->wait_lock){
+	for(struct lock *victim = lock; (victim != NULL &&  victim->holder != NULL); victim = victim->holder->wait_lock){
 		if(victim->holder->priority < change_priority){
 			victim->holder->priority = change_priority;
 		}
@@ -236,7 +236,6 @@ lock_try_acquire (struct lock *lock) {
 	success = sema_try_down (&lock->semaphore);
 	if (success){
 		lock->holder = thread_current ();
-		lock->holder->wait_lock = NULL;
 		list_push_back(&(lock->holder->held_lock), &(lock->lock_chain));
 	}
 	return success;

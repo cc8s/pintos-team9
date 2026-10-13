@@ -398,8 +398,7 @@ thread_set_priority (int new_priority) {
 
 	curr->local_priority = new_priority;
 	
-	int max_priority = recalc_priority(curr);
-	curr->priority = (max_priority > new_priority) ? max_priority : new_priority;
+	curr->priority = recalc_priority(curr);
 	thread_check_preempt ();
 	intr_set_level(old_level);
 }
