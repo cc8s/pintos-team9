@@ -158,9 +158,11 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-int thread_calc_recent_cpu(struct thread *t);
+void thread_calc_recent_cpu(struct thread *t);
 void recalc_load_avg(void);
 void thread_calc_priority (struct thread *t);
+void mlfqs_recalc_priority_and_reorder(void);
+void mlfqs_recalc_recent_cpu(void);
 
 void do_iret (struct intr_frame *tf);
 

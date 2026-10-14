@@ -21,6 +21,7 @@
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+#define TIME_SLICE 4
 
 /* Random value for basic thread
    Do not modify this value. */
@@ -57,7 +58,6 @@ static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
-#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
 /* If false (default), use round-robin scheduler.
@@ -121,6 +121,9 @@ thread_init (void) {
 	list_init (&ready_list);
 	list_init (&sleep_list); /*추가*/
 	list_init (&destruction_req);
+	if(thread_mlfqs){
+		list_init (&all_list); /*all_list추가*/
+	}
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -145,6 +148,7 @@ thread_start (void) {
 	sema_down (&idle_started);
 }
 
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
@@ -158,12 +162,17 @@ thread_tick (void) {
 	else if (t->pml4 != NULL)
 		user_ticks++;
 #endif
-	else
+	else{
 		kernel_ticks++;
+		if(thread_mlfqs){
+			t->recent_cpu = add_mixed(t->recent_cpu, 1);
+		}
+	}
 
 	/* Enforce preemption. */
-	if (++thread_ticks >= TIME_SLICE)
+	if (++thread_ticks >= TIME_SLICE){
 		intr_yield_on_return ();
+	}
 }
 
 /* Prints thread statistics. */
@@ -215,6 +224,13 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+
+	if(thread_mlfqs){
+		t->nice = thread_current()->nice;
+		t->recent_cpu = thread_current()->recent_cpu;
+		thread_calc_priority(t);
+	}
+
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -360,6 +376,9 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+	if(thread_mlfqs){
+		list_remove(&(thread_current()->all));
+	}
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -435,6 +454,20 @@ thread_get_priority (void) {
 	return thread_current ()->priority;
 }
 
+/*리스트 단위로 업데이트할 때 사용*/
+void mlfqs_recalc_priority_and_reorder(void){
+	struct list_elem *curr;
+	struct thread *t;
+	for(curr = list_begin(&all_list); curr != list_end(&all_list); curr = list_next(curr)){
+		t = list_entry(curr, struct thread, all);
+		if(t != idle_thread){
+			thread_calc_priority(t);
+		}
+	}
+	list_sort(&ready_list, priority_more, NULL);
+}
+
+/*priority 계산*/
 void thread_calc_priority (struct thread *t) {
 	t->priority = PRI_MAX - fp_to_int(div_mixed(t->recent_cpu, 4)) - (t->nice * 2);
 	if(t->priority <PRI_MIN){
@@ -484,10 +517,20 @@ thread_get_recent_cpu (void) {
 	return fp_to_int_round(mul_mixed(thread_current()->recent_cpu, 100));
 }
 
-int thread_calc_recent_cpu(struct thread *t){
+void mlfqs_recalc_recent_cpu(void){
+	struct list_elem *curr;
+	struct thread *t;
+	for(curr = list_begin(&all_list); curr != list_end(&all_list); curr = list_next(curr)){
+		t = list_entry(curr, struct thread, all);
+		if(t != idle_thread){
+			thread_calc_recent_cpu(t);
+		}
+	}
+}
+
+void thread_calc_recent_cpu(struct thread *t){
 	//recent_cpu = (2 * load_avg) / (2 * load_avg + 1) * recent_cpu + nice
-	int recent_cpu = add_mixed(mul_fp(div_fp(mul_mixed(load_avg, 2), add_mixed(mul_mixed(load_avg, 2), 1)), t->recent_cpu), t->nice);
-	return recent_cpu;
+	t->recent_cpu = add_mixed(mul_fp(div_fp(mul_mixed(load_avg, 2), add_mixed(mul_mixed(load_avg, 2), 1)), t->recent_cpu), t->nice);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -555,6 +598,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->local_priority = priority;
 	list_init(&(t->held_lock));
 	t->wait_lock = NULL;
+
+	if(thread_mlfqs){
+		enum intr_level old_level = intr_disable();
+		list_push_front(&all_list, &(t->all));
+		intr_set_level(old_level);
+	}
 
 }
 
