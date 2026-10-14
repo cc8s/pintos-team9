@@ -45,6 +45,12 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+/* mlfqs를 위한 전체 thread lsit */
+static struct list all_list;
+
+/* cpu가 바쁜 정도 -> bss여서 0으로 초기화 됨  */
+static int load_avg;
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -429,31 +435,59 @@ thread_get_priority (void) {
 	return thread_current ()->priority;
 }
 
+void thread_calc_priority (struct thread *t) {
+	t->priority = PRI_MAX - fp_to_int(div_mixed(t->recent_cpu, 4)) - (t->nice * 2);
+	if(t->priority <PRI_MIN){
+		t->priority = PRI_MIN;
+	}
+	else if(t->priority > PRI_MAX){
+		t->priority = PRI_MAX;
+	}
+
+}
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) {
+thread_set_nice (int nice) {
 	/* TODO: Your implementation goes here */
+	enum intr_level old_level = intr_disable();
+
+	thread_current()->nice = nice;
+	thread_calc_priority(thread_current());
+	thread_check_preempt();
+
+	intr_set_level(old_level);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return fp_to_int_round(mul_mixed(load_avg, 100));
+}
+
+void recalc_load_avg(void){
+	int ready_list_size = list_size(&ready_list) + (idle_thread != thread_current());
+	load_avg = mul_fp(div_mixed(int_to_fp(59), 60), load_avg) + mul_mixed(div_mixed(int_to_fp(1), 60), ready_list_size);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return fp_to_int_round(mul_mixed(thread_current()->recent_cpu, 100));
+}
+
+int thread_calc_recent_cpu(struct thread *t){
+	//recent_cpu = (2 * load_avg) / (2 * load_avg + 1) * recent_cpu + nice
+	int recent_cpu = add_mixed(mul_fp(div_fp(mul_mixed(load_avg, 2), add_mixed(mul_mixed(load_avg, 2), 1)), t->recent_cpu), t->nice);
+	return recent_cpu;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -512,7 +546,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
-	memset (t, 0, sizeof *t);
+	memset (t, 0, sizeof *t); /*nice 와 recent_cpu는 이 줄 때문에 따로 안 해도 0으로 초기화 됨 */
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);

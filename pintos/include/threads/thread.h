@@ -93,6 +93,8 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int local_priority;                 /* priority를 양보 받기 전의 priority */
+	int nice; 							/* mlfqs를 위한 필드 */
+	int recent_cpu;						/* recent_cpu는 고정소수점으로 저장한다. */
 
 	int64_t local_tick; 				/* 깨어날 절대시간 */
 
@@ -100,6 +102,7 @@ struct thread {
 	struct list_elem elem;              /* List element. */
 	struct lock *wait_lock;                  /* 지금 기다리는 lock. */
 	struct list held_lock;              /* 지금 가지고 있는 lock의 리스트. */
+	struct list_elem all;				/* all list를 위한 list_elem */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -154,6 +157,10 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+int thread_calc_recent_cpu(struct thread *t);
+void recalc_load_avg(void);
+void thread_calc_priority (struct thread *t);
 
 void do_iret (struct intr_frame *tf);
 
