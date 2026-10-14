@@ -20,6 +20,13 @@ static inline int fp_to_int_round(int x){
     return (x + F/2 ) / F; // 0.5를 더한 후 나눠서 반올림을 구현한다 
 }
 
+static inline int fp_to_int_round_64(int64_t x){
+    if(x < 0){
+        return (x - F/2) / F;
+    }
+    return (x + F/2 ) / F;
+}
+
 static inline int add_fp(int x1, int x2){
     return x1 + x2;
 }

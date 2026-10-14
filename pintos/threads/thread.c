@@ -23,6 +23,8 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 #define TIME_SLICE 4
+#define NICE_MAX 20
+#define NICE_MIN -20
 
 /* Random value for basic thread
    Do not modify this value. */
@@ -500,7 +502,14 @@ void
 thread_set_nice (int nice) {
 	/* TODO: Your implementation goes here */
 	enum intr_level old_level = intr_disable();
-
+	
+	if(nice < NICE_MIN){
+		nice = NICE_MIN;
+	}
+	else if(nice > NICE_MAX){
+		nice = NICE_MAX;
+	}
+	
 	thread_current()->nice = nice;
 	thread_calc_priority(thread_current());
 	thread_check_preempt();
@@ -531,7 +540,7 @@ void recalc_load_avg(void){
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return fp_to_int_round(mul_mixed(thread_current()->recent_cpu, 100));
+	return fp_to_int_round_64((int64_t)thread_current()->recent_cpu * 100); // int64_t로 오버플로우가 나지 않게 처리함 
 }
 
 
