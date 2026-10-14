@@ -237,7 +237,7 @@ void
 thread_sleep (int64_t wakeup_tick) {
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
-	/* 상태를 건드리기 전에 잘못 호출 시 바로 패닉시킴(원인 찾기 용이) */
+	/* 상태를 건드리기 전에 잘못 호출 시 바로 패닉(원인 찾기 용이) */
 	ASSERT (!intr_context ());
 	ASSERT (curr != idle_thread);
 
@@ -381,10 +381,75 @@ thread_check_preempt (void) {
 	intr_set_level (old_level);
 }
 
+/* 기부자 비교함수 */
+static bool
+donor_priority_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	const struct thread *ta = list_entry (a, struct thread, donated_elem);
+	const struct thread *tb = list_entry (b, struct thread, donated_elem);
+	return ta->priority < tb->priority;
+}
+
+/* 기부자 회수함수 */
+void
+thread_remove_donors (struct lock *lock) {
+	struct thread *curr = thread_current ();
+	/* donated_threads 처음~끝까지 훑으며 lock일치확인 */
+	struct list_elem *e = list_begin (&curr->donated_threads);
+	while (e != list_end (&curr->donated_threads)) {
+		struct thread *t = list_entry (e, struct thread, donated_elem);
+		if (t->waiting_lock == lock)
+			/* 같으면 리스트에서 지우고 다음 칸으로 이동 */
+			e = list_remove (e);
+		else
+			/* 다르면 그냥 다음 칸으로 이동 */
+			e = list_next (e);
+	}
+}
+/* 우선순위 재계산함수(기부자포함) */
+void
+thread_recalculate_priority (void) {
+	struct thread *curr = thread_current ();
+	curr->priority = curr->base_priority;
+	if (!list_empty (&curr->donated_threads)) {
+		/* 기부자 중 priority 가장 높은 스레드 탐색후 교체 */
+		struct thread *top = list_entry (list_max (&curr->donated_threads, donor_priority_less, NULL), struct thread, donated_elem);
+		if (top->priority > curr->priority)
+			curr->priority = top->priority;
+	}
+}
+/* 우선순위 전파함수(chain) */
+void
+thread_pass_priority (void) {
+	struct thread *curr = thread_current ();
+	struct thread *t = curr;
+
+	int depth = 0;
+
+	while (depth < 8) {
+		/* 지금 보는 스레드가 기다리는 lock이 없으면 break */
+		if (t->waiting_lock == NULL) {
+			break;
+		}
+		/* lock의 holder획득 */
+		struct thread *h = t->waiting_lock->holder;
+		if (h == NULL) {
+			break;
+		}
+		/* holder.priority < curr.priority이면 출발점 값으로 올림 */
+		if (h->priority < curr->priority) {
+			h->priority = curr->priority;
+		}
+		/* 지금 보는 스레드를 holder로 바꾸고 깊이+1 */
+		t = h;
+		depth += 1;
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->base_priority = new_priority;
+	thread_recalculate_priority ();
 	thread_check_preempt ();
 }
 
@@ -483,6 +548,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	/* donation 초기화 */
+	t->base_priority = t->priority;
+	t->waiting_lock = NULL;
+	list_init(&t->donated_threads);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

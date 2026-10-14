@@ -94,6 +94,11 @@ struct thread {
 
 	int64_t local_tick; 				/* 깨어날 절대시간 */
 
+	int base_priority;					/* donation용 추가필드 */
+	struct lock* waiting_lock;
+	struct list donated_threads;
+	struct list_elem donated_elem;
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -133,6 +138,10 @@ void thread_wakeup (int64_t);
 
 bool priority_more (const struct list_elem *a, const struct list_elem *b, void *aux);
 void thread_check_preempt (void);
+
+void thread_remove_donors (struct lock *lock);
+void thread_recalculate_priority (void);
+void thread_pass_priority (void);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
