@@ -6,9 +6,12 @@
 
 /* A counting semaphore. */
 struct semaphore {
+   	struct list waiters;        /* List of waiting threads. */
+   	// ================ [8바이트 영역] ================
+
 	unsigned value;             /* Current value. */
-	struct list waiters;        /* List of waiting threads. */
 	int locked_priority;
+	// ================ [4바이트 영역] ================
 };
 
 void sema_init (struct semaphore *, unsigned value);
