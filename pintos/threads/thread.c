@@ -16,7 +16,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
-
+ 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -396,9 +396,16 @@ thread_check_preempt (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+
+	if(thread_mlfqs){
+		return;
+	}
+
 	enum intr_level old_level = intr_disable();
 
+
 	struct thread *curr = thread_current ();
+
 	if(curr->priority != curr->local_priority){
 		if(curr->priority < new_priority){
 			curr->priority = new_priority;
@@ -411,6 +418,7 @@ thread_set_priority (int new_priority) {
 	curr->local_priority = new_priority;
 	
 	curr->priority = recalc_priority(curr);
+
 	thread_check_preempt ();
 	intr_set_level(old_level);
 }

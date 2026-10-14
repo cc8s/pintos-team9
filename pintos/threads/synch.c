@@ -199,15 +199,17 @@ lock_acquire (struct lock *lock) {
 
 	enum intr_level old_level = intr_disable ();
 
-	if(lock->holder){
+	if(!thread_mlfqs && lock->holder){
 		curr->wait_lock = lock;
 		chain_donate_priority(lock, curr->priority);
 	}
 
 	sema_down (&lock->semaphore);
 	lock->holder = curr;
-	curr->wait_lock  = NULL;
-	list_push_front(&(curr->held_lock), &(lock->lock_chain));
+	if(!thread_mlfqs){
+		curr->wait_lock  = NULL;
+		list_push_front(&(curr->held_lock), &(lock->lock_chain));
+	}
 	intr_set_level (old_level);
 
 }
@@ -241,7 +243,9 @@ lock_try_acquire (struct lock *lock) {
 	success = sema_try_down (&lock->semaphore);
 	if (success){
 		lock->holder = thread_current ();
-		list_push_front(&(lock->holder->held_lock), &(lock->lock_chain));
+		if(!thread_mlfqs){
+			list_push_front(&(lock->holder->held_lock), &(lock->lock_chain));
+		}
 	}
 	intr_set_level (old_level);
 	return success;
@@ -282,9 +286,11 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	enum intr_level old_level = intr_disable();
-	list_remove(&(lock->lock_chain));
 
-	thread_current()->priority = recalc_priority(thread_current());
+	if(!thread_mlfqs){
+		list_remove(&(lock->lock_chain));
+		thread_current()->priority = recalc_priority(thread_current());
+	}
 	
 
 	lock->holder = NULL;
