@@ -9,6 +9,7 @@
 #include "vm/vm.h"
 #endif
 
+struct lock;
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -91,11 +92,17 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int local_priority;                 /* priority를 양보 받기 전의 priority */
+	int nice; 							/* mlfqs를 위한 필드 */
+	int recent_cpu;						/* recent_cpu는 고정소수점으로 저장한다. */
 
 	int64_t local_tick; 				/* 깨어날 절대시간 */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct lock *wait_lock;                  /* 지금 기다리는 lock. */
+	struct list held_lock;              /* 지금 가지고 있는 lock의 리스트. */
+	struct list_elem all;				/* all list를 위한 list_elem */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -131,6 +138,8 @@ void thread_unblock (struct thread *);
 void thread_sleep (int64_t);
 void thread_wakeup (int64_t);
 
+void thread_reorder_ready(struct thread *t);
+
 bool priority_more (const struct list_elem *a, const struct list_elem *b, void *aux);
 void thread_check_preempt (void);
 
@@ -148,6 +157,14 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void thread_calc_recent_cpu(struct thread *t);
+void recalc_load_avg(void);
+void thread_calc_priority (struct thread *t);
+void mlfqs_update_all(void);
+void dirty_update(void);
+
+void mlfqs_tick(int64_t ticks);
 
 void do_iret (struct intr_frame *tf);
 

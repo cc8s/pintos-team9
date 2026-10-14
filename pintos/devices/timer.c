@@ -10,6 +10,7 @@
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 
+
 #if TIMER_FREQ < 19
 #error 8254 timer requires TIMER_FREQ >= 19
 #endif
@@ -128,7 +129,10 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	thread_tick ();
+	thread_tick (); // 이건 thread 별의 tick을 관리하는 함수임 
+	if(thread_mlfqs){
+		mlfqs_tick(ticks);
+	}
 	thread_wakeup(ticks);
 }
 

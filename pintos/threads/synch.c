@@ -32,6 +32,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#define MAX_DONATION_DEPTH 10 /*기부 제한 깊이 -> 체인이 순환하거나 길어지는 경우를 막음*/
+static void chain_donate_priority(struct lock *lock, int change_priority);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -192,8 +195,35 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	struct thread *curr = thread_current();
+
+	enum intr_level old_level = intr_disable ();
+
+	if(!thread_mlfqs && lock->holder){
+		curr->wait_lock = lock;
+		chain_donate_priority(lock, curr->priority);
+	}
+
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	lock->holder = curr;
+	if(!thread_mlfqs){
+		curr->wait_lock  = NULL;
+		list_push_front(&(curr->held_lock), &(lock->lock_chain));
+	}
+	intr_set_level (old_level);
+
+}
+
+static void chain_donate_priority(struct lock *lock, int change_priority){
+	ASSERT(intr_get_level () == INTR_OFF);
+	int depth = 0;
+	for(struct lock *victim = lock; (depth < MAX_DONATION_DEPTH && victim != NULL &&  victim->holder != NULL); victim = victim->holder->wait_lock){
+		if(victim->holder->priority < change_priority){
+			victim->holder->priority = change_priority;
+			thread_reorder_ready(victim->holder);
+		}
+		depth++;
+	}
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -209,11 +239,40 @@ lock_try_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	enum intr_level old_level = intr_disable ();
 	success = sema_try_down (&lock->semaphore);
-	if (success)
+	if (success){
 		lock->holder = thread_current ();
+		if(!thread_mlfqs){
+			list_push_front(&(lock->holder->held_lock), &(lock->lock_chain));
+		}
+	}
+	intr_set_level (old_level);
 	return success;
 }
+
+
+/*우선순위 양도 다음 next로 */
+int recalc_priority(struct thread *t){
+
+	int max_priority = t->local_priority;
+	struct list_elem *cur;
+
+	for(cur = list_begin (&t->held_lock); cur != list_end(&t->held_lock); cur = list_next(cur)){
+		struct lock *local_lock = list_entry(cur, struct lock, lock_chain);
+		struct list *list = &((local_lock->semaphore).waiters);
+		int priority;
+		for(struct list_elem *local_cur = list_begin(list); local_cur != list_end(list); local_cur = list_next(local_cur)){
+			priority = (list_entry(local_cur, struct thread, elem)->priority);
+			if (max_priority < priority){
+				max_priority = priority;
+			}
+		}
+	}
+	return max_priority;
+}
+
+
 
 /* Releases LOCK, which must be owned by the current thread.
    This is lock_release function.
@@ -226,9 +285,20 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	enum intr_level old_level = intr_disable();
+
+	if(!thread_mlfqs){
+		list_remove(&(lock->lock_chain));
+		thread_current()->priority = recalc_priority(thread_current());
+	}
+	
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
+
+	intr_set_level(old_level);
 }
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds

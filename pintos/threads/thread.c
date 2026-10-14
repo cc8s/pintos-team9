@@ -11,14 +11,20 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "threads/fixed_point.h" // 고정소수점 파일 헤더 
+#include "devices/timer.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
-
+ 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+#define TIME_SLICE 4
+#define NICE_MAX 20
+#define NICE_MIN -20
 
 /* Random value for basic thread
    Do not modify this value. */
@@ -43,13 +49,21 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+/* mlfqs를 위한 전체 thread list */
+static struct list all_list;
+
+/* cpu가 바쁜 정도 -> bss여서 0으로 초기화 됨  */
+static int load_avg;
+
+/* recent_cpu가 바뀐 스레드 모음 */
+static struct list dirty_list;
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
-#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
 /* If false (default), use round-robin scheduler.
@@ -113,6 +127,10 @@ thread_init (void) {
 	list_init (&ready_list);
 	list_init (&sleep_list); /*추가*/
 	list_init (&destruction_req);
+	if(thread_mlfqs){
+		list_init (&all_list); /*all_list추가*/
+		list_init (&dirty_list);
+	}
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -137,6 +155,7 @@ thread_start (void) {
 	sema_down (&idle_started);
 }
 
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
@@ -150,12 +169,19 @@ thread_tick (void) {
 	else if (t->pml4 != NULL)
 		user_ticks++;
 #endif
-	else
+	else{
 		kernel_ticks++;
+		if(thread_mlfqs){
+			t->recent_cpu = add_mixed(t->recent_cpu, 1);
+			list_remove(&(t->all));
+			list_push_front(&dirty_list, &(t->all));
+		}
+	}
 
 	/* Enforce preemption. */
-	if (++thread_ticks >= TIME_SLICE)
+	if (++thread_ticks >= TIME_SLICE){
 		intr_yield_on_return ();
+	}
 }
 
 /* Prints thread statistics. */
@@ -208,6 +234,13 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	if(thread_mlfqs){
+		t->nice = thread_current()->nice;
+		t->recent_cpu = thread_current()->recent_cpu;
+		thread_calc_priority(t);
+	}
+
+
 	/* Add to run queue. */
 	thread_unblock (t);
 	
@@ -215,6 +248,16 @@ thread_create (const char *name, int priority,
 
 	return tid;
 }
+
+/*ready list 삭제 후 재 정렬 함수*/
+void thread_reorder_ready(struct thread *t){
+	ASSERT (intr_get_level () == INTR_OFF);
+	if(t->status == THREAD_READY){
+		list_remove(&(t->elem));
+		list_insert_ordered (&ready_list, &(t->elem), priority_more, NULL);
+	}
+}
+
 /* priority 우선순위 비교함수*/
 bool
 priority_more (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
@@ -342,6 +385,9 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+	if(thread_mlfqs){
+		list_remove(&(thread_current()->all));
+	}
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -384,8 +430,31 @@ thread_check_preempt (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+
+	if(thread_mlfqs){
+		return;
+	}
+
+	enum intr_level old_level = intr_disable();
+
+
+	struct thread *curr = thread_current ();
+
+	if(curr->priority != curr->local_priority){
+		if(curr->priority < new_priority){
+			curr->priority = new_priority;
+		}
+		curr->local_priority = new_priority;
+		intr_set_level(old_level);
+		return;
+	}
+
+	curr->local_priority = new_priority;
+	
+	curr->priority = recalc_priority(curr);
+
 	thread_check_preempt ();
+	intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -394,31 +463,121 @@ thread_get_priority (void) {
 	return thread_current ()->priority;
 }
 
+/*리스트 단위로 업데이트할 때 사용*/
+void mlfqs_update_all(void){
+	struct list_elem *curr;
+	struct thread *t;
+
+	for(curr = list_begin(&dirty_list); curr != list_end(&dirty_list);){
+		struct list_elem *temp = curr;
+		curr = list_next(curr);
+		t = list_entry(temp, struct thread, all);
+		list_remove(&(t->all));
+		list_push_front(&all_list, &(t->all));
+	}
+
+	for(curr = list_begin(&all_list); curr != list_end(&all_list); curr = list_next(curr)){
+		t = list_entry(curr, struct thread, all);
+		if(t != idle_thread){
+			thread_calc_recent_cpu(t);
+			thread_calc_priority(t);
+		}
+	}
+	list_sort(&ready_list, priority_more, NULL);
+}
+
+/*priority 계산*/
+void thread_calc_priority (struct thread *t) {
+	t->priority = PRI_MAX - fp_to_int(div_mixed(t->recent_cpu, 4)) - (t->nice * 2);
+	if(t->priority <PRI_MIN){
+		t->priority = PRI_MIN;
+	}
+	else if(t->priority > PRI_MAX){
+		t->priority = PRI_MAX;
+	}
+
+}
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) {
+thread_set_nice (int nice) {
 	/* TODO: Your implementation goes here */
+	enum intr_level old_level = intr_disable();
+	
+	if(nice < NICE_MIN){
+		nice = NICE_MIN;
+	}
+	else if(nice > NICE_MAX){
+		nice = NICE_MAX;
+	}
+	
+	thread_current()->nice = nice;
+	thread_calc_priority(thread_current());
+	thread_check_preempt();
+
+	intr_set_level(old_level);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return fp_to_int_round(mul_mixed(load_avg, 100));
+}
+
+void recalc_load_avg(void){
+	int ready_list_size = list_size(&ready_list) + (idle_thread != thread_current());
+	load_avg = mul_fp(div_mixed(int_to_fp(59), 60), load_avg) + mul_mixed(div_mixed(int_to_fp(1), 60), ready_list_size);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return fp_to_int_round_64((int64_t)thread_current()->recent_cpu * 100); // int64_t로 오버플로우가 나지 않게 처리함 
+}
+
+
+void thread_calc_recent_cpu(struct thread *t){
+	//recent_cpu = (2 * load_avg) / (2 * load_avg + 1) * recent_cpu + nice
+	t->recent_cpu = add_mixed(mul_fp(div_fp(mul_mixed(load_avg, 2), add_mixed(mul_mixed(load_avg, 2), 1)), t->recent_cpu), t->nice);
+}
+
+void mlfqs_tick(int64_t ticks){
+	if(ticks % TIME_SLICE == 0){ 
+		if(ticks % TIMER_FREQ == 0){ //TIMER_FREQ = 100
+			recalc_load_avg();
+			mlfqs_update_all();
+		}
+		else{
+			dirty_update();
+		}
+		thread_check_preempt();
+	}
+}
+
+void dirty_update(void){
+	if(!list_empty(&dirty_list)){
+		struct list_elem *curr;
+		struct thread *t;
+		for(curr = list_begin(&dirty_list); curr != list_end(&dirty_list);){
+			struct list_elem *temp = curr;
+			curr = list_next(curr);
+			t = list_entry(temp, struct thread, all);
+			if(t != idle_thread){
+				thread_calc_priority(t);
+				list_remove(&(t->all));
+				list_push_front(&all_list, &(t->all));
+				thread_reorder_ready(t);
+			}
+		}
+	}
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -477,12 +636,22 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
-	memset (t, 0, sizeof *t);
+	memset (t, 0, sizeof *t); /*nice 와 recent_cpu는 이 줄 때문에 따로 안 해도 0으로 초기화 됨 */
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->local_priority = priority;
+	list_init(&(t->held_lock));
+	t->wait_lock = NULL;
+
+	if(thread_mlfqs){
+		enum intr_level old_level = intr_disable();
+		list_push_front(&all_list, &(t->all));
+		intr_set_level(old_level);
+	}
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
