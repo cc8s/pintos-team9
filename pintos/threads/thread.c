@@ -12,6 +12,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "threads/fixed_point.h" // 고정소수점 파일 헤더 
+#include "devices/timer.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -51,6 +52,9 @@ static struct list all_list;
 
 /* cpu가 바쁜 정도 -> bss여서 0으로 초기화 됨  */
 static int load_avg;
+
+/* dirty bit가 0인 thread 모음 */
+static struct list dirty_list;
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -123,6 +127,7 @@ thread_init (void) {
 	list_init (&destruction_req);
 	if(thread_mlfqs){
 		list_init (&all_list); /*all_list추가*/
+		list_init (&dirty_list);
 	}
 
 	/* Set up a thread structure for the running thread. */
@@ -166,6 +171,8 @@ thread_tick (void) {
 		kernel_ticks++;
 		if(thread_mlfqs){
 			t->recent_cpu = add_mixed(t->recent_cpu, 1);
+			list_remove(&(t->all));
+			list_push_front(&dirty_list, &(t->all));
 		}
 	}
 
@@ -455,12 +462,22 @@ thread_get_priority (void) {
 }
 
 /*리스트 단위로 업데이트할 때 사용*/
-void mlfqs_recalc_priority_and_reorder(void){
+void mlfqs_recalc_preq_and_reorder(void){
 	struct list_elem *curr;
 	struct thread *t;
+
+	for(curr = list_begin(&dirty_list); curr != list_end(&dirty_list);){
+		struct list_elem *temp = curr;
+		curr = list_next(curr);
+		t = list_entry(temp, struct thread, all);
+		list_remove(&(t->all));
+		list_push_front(&all_list, &(t->all));
+	}
+
 	for(curr = list_begin(&all_list); curr != list_end(&all_list); curr = list_next(curr)){
 		t = list_entry(curr, struct thread, all);
 		if(t != idle_thread){
+			thread_calc_recent_cpu(t);
 			thread_calc_priority(t);
 		}
 	}
@@ -517,20 +534,41 @@ thread_get_recent_cpu (void) {
 	return fp_to_int_round(mul_mixed(thread_current()->recent_cpu, 100));
 }
 
-void mlfqs_recalc_recent_cpu(void){
-	struct list_elem *curr;
-	struct thread *t;
-	for(curr = list_begin(&all_list); curr != list_end(&all_list); curr = list_next(curr)){
-		t = list_entry(curr, struct thread, all);
-		if(t != idle_thread){
-			thread_calc_recent_cpu(t);
-		}
-	}
-}
 
 void thread_calc_recent_cpu(struct thread *t){
 	//recent_cpu = (2 * load_avg) / (2 * load_avg + 1) * recent_cpu + nice
 	t->recent_cpu = add_mixed(mul_fp(div_fp(mul_mixed(load_avg, 2), add_mixed(mul_mixed(load_avg, 2), 1)), t->recent_cpu), t->nice);
+}
+
+void mlfqs_tick(int64_t ticks){
+	if(ticks % TIME_SLICE == 0){ 
+		if(ticks % TIMER_FREQ == 0){ //TIMER_FREQ = 100
+			recalc_load_avg();
+			mlfqs_recalc_preq_and_reorder();
+		}
+		else{
+			dirty_update();
+		}
+		thread_check_preempt();
+	}
+}
+
+void dirty_update(void){
+	if(!list_empty(&dirty_list)){
+		struct list_elem *curr;
+		struct thread *t;
+		for(curr = list_begin(&dirty_list); curr != list_end(&dirty_list);){
+			struct list_elem *temp = curr;
+			curr = list_next(curr);
+			t = list_entry(temp, struct thread, all);
+			if(t != idle_thread){
+				thread_calc_priority(t);
+				list_remove(&(t->all));
+				list_push_front(&all_list, &(t->all));
+				thread_reorder_ready(t);
+			}
+		}
+	}
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
