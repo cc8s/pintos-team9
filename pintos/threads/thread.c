@@ -11,13 +11,13 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
-#include "threads/fixed_point.h" // 고정소수점 파일 헤더 
+#include "threads/fixed_point.h" // 고정소수점 파일 헤더
 #include "devices/timer.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
- 
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -169,13 +169,14 @@ thread_tick (void) {
 	else if (t->pml4 != NULL)
 		user_ticks++;
 #endif
-	else{
+	else
 		kernel_ticks++;
-		if(thread_mlfqs){
-			t->recent_cpu = add_mixed(t->recent_cpu, 1);
-			list_remove(&(t->all));
-			list_push_front(&dirty_list, &(t->all));
-		}
+
+	/* user 프로세스(pml4 != NULL)도 recent_cpu를 쌓아야 한다 */
+	if(thread_mlfqs && t != idle_thread){
+		t->recent_cpu = add_mixed(t->recent_cpu, 1);
+		list_remove(&(t->all));
+		list_push_front(&dirty_list, &(t->all));
 	}
 
 	/* Enforce preemption. */
@@ -243,7 +244,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-	
+
 	thread_check_preempt ();
 
 	return tid;
@@ -413,7 +414,7 @@ void
 thread_check_preempt (void) {
 	enum intr_level old_level;
 	old_level = intr_disable ();
-		
+
 	if (!list_empty (&ready_list)) {
 		struct thread *t = list_entry (list_front (&ready_list), struct thread, elem);
 		if (t->priority > thread_current ()->priority) {
@@ -450,7 +451,7 @@ thread_set_priority (int new_priority) {
 	}
 
 	curr->local_priority = new_priority;
-	
+
 	curr->priority = recalc_priority(curr);
 
 	thread_check_preempt ();
@@ -502,14 +503,14 @@ void
 thread_set_nice (int nice) {
 	/* TODO: Your implementation goes here */
 	enum intr_level old_level = intr_disable();
-	
+
 	if(nice < NICE_MIN){
 		nice = NICE_MIN;
 	}
 	else if(nice > NICE_MAX){
 		nice = NICE_MAX;
 	}
-	
+
 	thread_current()->nice = nice;
 	thread_calc_priority(thread_current());
 	thread_check_preempt();
@@ -540,7 +541,7 @@ void recalc_load_avg(void){
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return fp_to_int_round_64((int64_t)thread_current()->recent_cpu * 100); // int64_t로 오버플로우가 나지 않게 처리함 
+	return fp_to_int_round_64((int64_t)thread_current()->recent_cpu * 100); // int64_t로 오버플로우가 나지 않게 처리함
 }
 
 
@@ -550,7 +551,7 @@ void thread_calc_recent_cpu(struct thread *t){
 }
 
 void mlfqs_tick(int64_t ticks){
-	if(ticks % TIME_SLICE == 0){ 
+	if(ticks % TIME_SLICE == 0){
 		if(ticks % TIMER_FREQ == 0){ //TIMER_FREQ = 100
 			recalc_load_avg();
 			mlfqs_update_all();
