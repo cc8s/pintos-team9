@@ -47,13 +47,13 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
-/* mlfqs를 위한 전체 thread lsit */
+/* mlfqs를 위한 전체 thread list */
 static struct list all_list;
 
 /* cpu가 바쁜 정도 -> bss여서 0으로 초기화 됨  */
 static int load_avg;
 
-/* dirty bit가 0인 thread 모음 */
+/* recent_cpu가 바뀐 스레드 모음 */
 static struct list dirty_list;
 
 /* Statistics. */
@@ -462,7 +462,7 @@ thread_get_priority (void) {
 }
 
 /*리스트 단위로 업데이트할 때 사용*/
-void mlfqs_recalc_preq_and_reorder(void){
+void mlfqs_update_all(void){
 	struct list_elem *curr;
 	struct thread *t;
 
@@ -544,7 +544,7 @@ void mlfqs_tick(int64_t ticks){
 	if(ticks % TIME_SLICE == 0){ 
 		if(ticks % TIMER_FREQ == 0){ //TIMER_FREQ = 100
 			recalc_load_avg();
-			mlfqs_recalc_preq_and_reorder();
+			mlfqs_update_all();
 		}
 		else{
 			dirty_update();

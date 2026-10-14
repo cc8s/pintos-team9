@@ -96,7 +96,6 @@ struct thread {
 	int nice; 							/* mlfqs를 위한 필드 */
 	int recent_cpu;						/* recent_cpu는 고정소수점으로 저장한다. */
 
-
 	int64_t local_tick; 				/* 깨어날 절대시간 */
 
 	/* Shared between thread.c and synch.c. */
@@ -162,7 +161,7 @@ int thread_get_load_avg (void);
 void thread_calc_recent_cpu(struct thread *t);
 void recalc_load_avg(void);
 void thread_calc_priority (struct thread *t);
-void mlfqs_recalc_preq_and_reorder(void);
+void mlfqs_update_all(void);
 void dirty_update(void);
 
 void mlfqs_tick(int64_t ticks);
